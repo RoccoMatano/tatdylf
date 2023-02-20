@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Copyright 2007-2022 Rocco Matano
+// Copyright 2007-2023 Rocco Matano
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -46,7 +46,7 @@ static const uint32_t NUM_CLIENTS    =  32;
 static const uint32_t SERVER_PORT    =  67;
 static const uint32_t CLIENT_PORT    =  68;
 static const uint32_t DHCP_OPT_SIZE  = 128;  // min required for Basler cameras
-static const uint32_t DHCP_COOKIE    = 0x63825363;
+static const uint32_t DHCP_COOKIE    = 0x63538263;
 static const uint32_t CC_NET_MASK_LE = 0xffff0000; // 255.255.0.0
 static const uint32_t CC_PREFIX_LE   = 0xc0a80000; // 192.168.0.0
 static const uint32_t CC_SUB_MASK_LE = 0xffffff00; // class c subnet mask
@@ -113,20 +113,6 @@ struct Config
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Option
-{
-    uint8_t tag;
-    uint8_t size;
-    union
-    {
-        uint8_t  buf[256];
-        uint16_t u16;
-        uint32_t u32;
-    };
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 enum DHCP_MESSAGES
 {
     DMSG_DISCOVER = 1,
@@ -140,6 +126,7 @@ enum DHCP_MESSAGES
 
 enum DHCP_OPTIONS
 {
+    DOPT_PAD               =   0,
     DOPT_SUBNET_MASK       =   1,
     DOPT_REQUESTED_IP_ADDR =  50,
     DOPT_ADDR_LEASE_TIME   =  51,

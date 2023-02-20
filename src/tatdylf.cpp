@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Copyright 2007-2022 Rocco Matano
+// Copyright 2007-2023 Rocco Matano
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the "Software"),
@@ -59,7 +59,7 @@ static DWORD WINAPI run_dhcp(void* param)
     print_fmt("%s\n", ip2string(htonl(cfg.range_end)));
     print_fmt("Lease : %u\n\n", cfg.lease);
 
-    for(;;)
+    for (;;)
     {
         Request req;
         if (receive_request(&req, &cfg))
@@ -120,21 +120,6 @@ void entry_point()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static uint8_t *extract_option(uint8_t *src, Option *opt)
-{
-    if (*src != DOPT_END)
-    {
-        opt->tag = *src++;
-        opt->size = *src++;
-        mem_cpy(opt->buf, src, opt->size);
-        src += opt->size;
-        return src;
-    }
-    return nullptr;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 bool receive_request(Request *req, Config *cfg)
 {
     zero_init(*req);
@@ -156,32 +141,35 @@ bool receive_request(Request *req, Config *cfg)
     }
 
     const uint8_t req_op = req->packet.op;
-    const uint32_t cookie = htonl(req->packet.magic_cookie);
+    const uint32_t cookie = req->packet.magic_cookie;
     if (req_op != BOOTP_REQUEST || cookie != DHCP_COOKIE)
     {
         print_fmt("not DHCP: %u, %x\n", req_op, cookie);
         return false;
     }
 
-    Option opt;
     uint8_t *src = req->packet.options;
-    uint8_t * const end = src + sizeof(req->packet.options);
-    while (src < end && (src = extract_option(src, &opt)) != nullptr)
+    uint8_t tag = *src++;
+    while (tag != DOPT_END)
     {
-        switch (opt.tag)
+        if (tag != DOPT_PAD)
         {
-        case DOPT_MESSAGE_TYPE:
-            req->request_msg = opt.buf[0];
-            break;
-
-        case DOPT_SERVER_IDENT:
-            req->server_ip = opt.u32;
-            break;
-
-        case DOPT_REQUESTED_IP_ADDR:
-            req->requested_ip = opt.u32;
-            break;
+            uint8_t size = *src++;
+            switch (tag)
+            {
+                case DOPT_MESSAGE_TYPE:
+                    req->request_msg = *src;
+                    break;
+                case DOPT_SERVER_IDENT:
+                    mem_cpy(&req->server_ip, src, sizeof(req->server_ip));
+                    break;
+                case DOPT_REQUESTED_IP_ADDR:
+                    mem_cpy(&req->requested_ip, src, sizeof(req->requested_ip));
+                    break;
+            }
+            src += size;
         }
+        tag = *src++;
     }
     return true;
 }
@@ -306,13 +294,10 @@ static inline int matching_client(uint32_t ip, uint32_t *chaddr, Config *cfg)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static uint8_t *attach_option(uint8_t *dst, const Option *opt)
+static inline uint8_t* write_unaligned_u32(uint8_t* ptr, uint32_t val)
 {
-    *dst++ = opt->tag;
-    *dst++ = opt->size;
-    mem_cpy(dst, opt->buf, opt->size);
-    dst += opt->size;
-    return dst;
+    mem_cpy(ptr, &val, sizeof(val));
+    return ptr + sizeof(val);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -322,31 +307,25 @@ static int finalize_reply(Request *req, Config *cfg)
     zero_init(req->packet.options);
     uint8_t *dst = req->packet.options;
 
-    Option opt;
-    opt.tag = DOPT_MESSAGE_TYPE;
-    opt.size = 1;
-    opt.buf[0] = req->reply_msg;
-    dst = attach_option(dst, &opt);
+    *dst++ = DOPT_MESSAGE_TYPE;
+    *dst++ = 1;
+    *dst++ = req->reply_msg;
 
-    if (req->reply_msg != DMSG_NAK)
-    {
-        opt.tag = DOPT_SUBNET_MASK;
-        opt.size = 4;
-        opt.u32 = CC_SUB_MASK_BE;
-        dst = attach_option(dst, &opt);
+    *dst++ = DOPT_SUBNET_MASK;
+    *dst++ = sizeof(uint32_t);
+    dst = write_unaligned_u32(dst, CC_SUB_MASK_BE);
 
-        opt.tag = DOPT_SERVER_IDENT;
-        opt.u32 = cfg->server_ip;
-        dst = attach_option(dst, &opt);
+    *dst++ = DOPT_SERVER_IDENT;
+    *dst++ = sizeof(uint32_t);
+    dst = write_unaligned_u32(dst, cfg->server_ip);
 
-        opt.tag = DOPT_ADDR_LEASE_TIME;
-        opt.u32 = htonl(cfg->lease);
-        dst = attach_option(dst, &opt);
-    }
+    *dst++ = DOPT_ADDR_LEASE_TIME;
+    *dst++ = sizeof(uint32_t);
+    dst = write_unaligned_u32(dst, htonl(cfg->lease));
 
     *dst++ = DOPT_END;
     req->packet.op = BOOTP_REPLY;
-    return static_cast<int>(dst - reinterpret_cast<uint8_t*>(&req->packet));
+    return static_cast<int>(dst - reinterpret_cast<uint8_t*>(req->buffer));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -423,26 +402,6 @@ bool send_reply(Request *req, Config *cfg)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline DWORD get_ini_string(
-    const char *section,
-    const char *key,
-    char *str,
-    uint32_t size,
-    const char *filename
-    )
-{
-    return GetPrivateProfileString(
-        section,
-        key,
-        "",
-        str,
-        size,
-        filename
-        );
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 static bool get_single_config(Config *cfg, const char *section, const char* ini)
 {
 
@@ -452,7 +411,7 @@ static bool get_single_config(Config *cfg, const char *section, const char* ini)
 
     uint32_t server_ip_host_end;
     char str[256];
-    if (get_ini_string(section, "ip", str, sizeof(str), ini))
+    if (GetPrivateProfileString(section, "ip", "", str, sizeof(str), ini))
     {
         cfg->server_ip = inet_addr(str);
         server_ip_host_end = htonl(cfg->server_ip);
@@ -486,8 +445,10 @@ static bool get_single_config(Config *cfg, const char *section, const char* ini)
 
     ///////////////////////////// lease time ///////////////////////////////////
 
-#ifdef TATDYLF_READ_LEASE_TIME
-    if (get_ini_string(section, "lease", str, sizeof(str), ini))
+#define TATDYLF_DEFAULT_LEASE_TIME 600
+
+#ifndef TATDYLF_DO_NOT_READ_LEASE_TIME
+    if (GetPrivateProfileString(section, "lease", "", str, sizeof(str), ini))
     {
         char *p = str;
         while (*p == ' ') p++;
@@ -501,10 +462,10 @@ static bool get_single_config(Config *cfg, const char *section, const char* ini)
     }
     if (!cfg->lease)
     {
-        cfg->lease = UINT32_MAX;
+        cfg->lease = TATDYLF_DEFAULT_LEASE_TIME;
     }
 #else
-    cfg->lease = 600;
+    cfg->lease = TATDYLF_DEFAULT_LEASE_TIME;
 #endif
 
     /////////////////////////////// socket /////////////////////////////////////
