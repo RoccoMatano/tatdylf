@@ -18,3 +18,11 @@ objs = env.Object(source=["tatdylf.cpp", "tatdylf_ui.cpp"])
 res = env.RES("tatdylf.rc")
 libs = ["kernel32.lib", "ws2_32.lib", "user32.lib", "shell32.lib"]
 exe = env.Program('tatdylf.exe', objs + res, LIBS=libs)
+
+if env.cfg.arch == msvc_env.X64:
+    sexe = env.Squab(None, exe)
+    env.Default(sexe)
+else:
+    env.Default(exe)
+
+env.install_relative_to_parent_dir("bin", [exe, "../../tatdylf.ini"])
