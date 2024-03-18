@@ -1,11 +1,11 @@
 if __name__ == '__main__':
-    import sys, shutil, subprocess
-    sys.argv[0:1] = [sys.executable, shutil.which("scons"), "-f", __file__]
+    import sys, subprocess
+    sys.argv[0:1] = [sys.executable, "-m", "SCons", "-f", __file__]
     sys.exit(subprocess.run(sys.argv).returncode)
 
 ################################################################################
 
-import msvc_env
+import scons_msvc_env as msvc_env
 cfg = msvc_env.BuildCfg(
     subsystem="console",
     ver=msvc_env.VC9,
