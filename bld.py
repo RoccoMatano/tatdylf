@@ -13,7 +13,7 @@ cfg = msvc_env.BuildCfg(
     )
 env = msvc_env.MsvcEnvironment(cfg)
 env.set_build_dir('src', 'build')
-env.Append(CCFLAGS=['/Isrc'])
+env.Append(CPPPATH=["."])
 objs = env.Object(source=["tatdylf.cpp", "tatdylf_ui.cpp"])
 res = env.RES("tatdylf.rc")
 libs = ["kernel32.lib", "ws2_32.lib", "user32.lib", "shell32.lib"]
